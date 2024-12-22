@@ -1,0 +1,99 @@
+:root {
+  font-family: Roboto, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(0, 0, 0, 0.87);
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  background-color: #ffffff;
+}
+
+#root {
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  #root {
+    padding: 1rem;
+  }
+}
+
+.tile-flipper {
+  perspective: 1000px;
+  width: 100%;
+  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+.tile-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  transform: rotateY(0deg);
+  -webkit-transform: rotateY(0deg);
+}
+
+.tile-flipped .tile-inner {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+}
+
+.tile-front,
+.tile-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.tile-front {
+  background-color: white;
+  z-index: 2;
+}
+
+.tile-back {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+  background-repeat: no-repeat;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  background-color: white;
+  will-change: transform;
+  -webkit-transform: translateZ(0) rotateY(180deg);
+  -moz-transform: translateZ(0) rotateY(180deg);
+  -ms-transform: translateZ(0) rotateY(180deg);
+  -o-transform: translateZ(0) rotateY(180deg);
+  transform: translateZ(0) rotateY(180deg);
+  background-blend-mode: normal;
+  isolation: isolate;
+}
