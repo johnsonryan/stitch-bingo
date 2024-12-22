@@ -75,105 +75,9 @@ interface SavedGame {
   rowHeaders: string[];
   bingo: boolean;
   timestamp: number;
+  artStyle?: string;
+  lastUsedStyles?: string[];
 }
-
-// Function to get an AI-generated sticker image
-const generateAIImage = async () => {
-  const subjects = [
-    // Cozy Home Elements
-    'tiny cottage with thatched roof',
-    'cozy window seat with cushions',
-    'steaming teacup with flowers',
-    'vintage teapot with roses',
-    'woven basket with mushrooms',
-    'rustic wooden door with ivy',
-    'antique lantern with candle',
-    'stack of vintage books',
-    
-    // Garden & Nature
-    'cottage garden flowers',
-    'wild strawberry patch',
-    'climbing morning glories',
-    'garden gate with roses',
-    'herb garden with labels',
-    'woven flower crown',
-    'pressed flower collection',
-    'wildflower bouquet',
-    
-    // Cozy Activities
-    'knitting basket with yarn',
-    'open journal with pressed flowers',
-    'baking bread scene',
-    'jam making setup',
-    'herb drying rack',
-    'letter writing desk',
-    'embroidery hoop with flowers',
-    
-    // Whimsical Elements
-    'fairy mushroom house',
-    'garden gnome home',
-    'butterfly collection',
-    'pressed leaf art',
-    'acorn and flower wreath',
-    'dried flower garland',
-    'moss covered stepping stones',
-    
-    // Kitchen & Food
-    'fresh baked pie cooling',
-    'honey jar with flowers',
-    'herbal tea collection',
-    'basket of fresh eggs',
-    'homemade jam jars',
-    'fresh baked cookies',
-    'dried herb bundles',
-    
-    // Seasonal Elements
-    'autumn leaf collection',
-    'spring flower basket',
-    'winter window scene',
-    'summer garden harvest',
-    'dried lavender bunch',
-    'seasonal berry basket',
-    'pressed autumn leaves'
-  ];
-
-  const styles = [
-    'cottagecore illustration',
-    'cozy hand drawn art',
-    'whimsical illustration',
-    'vintage botanical style'
-  ];
-
-  const details = [
-    'soft watercolor style',
-    'delicate line art',
-    'hand drawn details',
-    'vintage illustration style',
-    'gentle ink drawing',
-    'botanical sketch style'
-  ];
-
-  const extras = [
-    'muted earth tones',
-    'vintage color palette',
-    'delicate shading',
-    'soft textures',
-    'gentle linework',
-    'romantic details',
-    'cozy atmosphere',
-    'nostalgic feeling'
-  ];
-
-  const randomSubject = subjects[Math.floor(Math.random() * subjects.length)];
-  const randomStyle = styles[Math.floor(Math.random() * styles.length)];
-  const randomDetail = details[Math.floor(Math.random() * details.length)];
-  const randomExtra = extras[Math.floor(Math.random() * extras.length)];
-  
-  const prompt = `${randomSubject}, ${randomStyle}, ${randomDetail}, ${randomExtra}, pure white background, single illustration, hand drawn art style, clean edges, no text, centered composition, cottagecore aesthetic, solid white background, isolated artwork, not photorealistic, illustrated style`;
-  const seed = Math.floor(Math.random() * 1000000);
-  
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}&width=512&height=512&nologo=true&style=cute&seed2=${seed + 1}`;
-};
 
 function App() {
   const [tiles, setTiles] = useState<BingoTile[]>([]);
@@ -194,6 +98,12 @@ function App() {
   const [activeGameTimestamp, setActiveGameTimestamp] = useState<number | null>(null);
   const [loadConfirmDialogOpen, setLoadConfirmDialogOpen] = useState(false);
   const [gameToLoad, setGameToLoad] = useState<SavedGame | null>(null);
+  const [currentArtStyle, setCurrentArtStyle] = useState<string | null>(null);
+  const [lastUsedStyles, setLastUsedStyles] = useState<string[]>([]);
+  const [lastUsedType, setLastUsedType] = useState<'creature' | 'item' | 'scene' | null>(null);
+  const [pressTimer, setPressTimer] = useState<number | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [pressedTileId, setPressedTileId] = useState<number | null>(null);
   
   // Media queries for responsive design
   const isMobile = useMediaQuery('(max-width:600px)');
@@ -273,6 +183,8 @@ function App() {
       setRowHeaders(gameState.rowHeaders);
       setBingo(gameState.bingo);
       setActiveGameTimestamp(gameState.timestamp);
+      setCurrentArtStyle(gameState.artStyle || null);
+      setLastUsedStyles(gameState.lastUsedStyles || []);
       setIsImageLoading(false);
     } else {
       initializeBoard();
@@ -287,11 +199,13 @@ function App() {
         columnHeaders,
         rowHeaders,
         bingo,
-        timestamp: activeGameTimestamp
+        timestamp: activeGameTimestamp,
+        artStyle: currentArtStyle || undefined,
+        lastUsedStyles
       };
       localStorage.setItem('bingoCurrentGame', JSON.stringify(currentGame));
     }
-  }, [tiles, columnHeaders, rowHeaders, bingo, activeGameTimestamp, isImageLoading]);
+  }, [tiles, columnHeaders, rowHeaders, bingo, activeGameTimestamp, isImageLoading, currentArtStyle, lastUsedStyles]);
 
   const markWinningTiles = (newTiles: BingoTile[], winningTilesFn: (tile: BingoTile) => boolean) => {
     const winningTiles = newTiles.map(tile => 
@@ -377,6 +291,9 @@ function App() {
   };
 
   const handleTileClick = async (tileId: number) => {
+    // If we're regenerating, don't handle the click
+    if (isRegenerating) return;
+
     const clickedTile = tiles.find(tile => tile.id === tileId);
     if (!clickedTile || clickedTile.selected) return;
 
@@ -492,7 +409,9 @@ function App() {
       columnHeaders,
       rowHeaders,
       bingo,
-      timestamp: currentTimestamp
+      timestamp: currentTimestamp,
+      artStyle: currentArtStyle || undefined,
+      lastUsedStyles
     };
 
     let updatedSaves: SavedGame[];
@@ -525,6 +444,9 @@ function App() {
     setRowHeaders(savedGame.rowHeaders);
     setBingo(savedGame.bingo);
     setActiveGameTimestamp(savedGame.timestamp);
+    setCurrentArtStyle(savedGame.artStyle || null);
+    setLastUsedStyles(savedGame.lastUsedStyles || []);
+    setLastUsedType(null);
     setLoadDialogOpen(false);
   };
 
@@ -544,6 +466,15 @@ function App() {
   const handleNewGameConfirm = async () => {
     setResetDialogOpen(false);
     setActiveGameTimestamp(null);
+    
+    // If there's a current style, add it to lastUsedStyles before resetting
+    if (currentArtStyle) {
+      const newLastUsedStyles = [currentArtStyle, ...lastUsedStyles].slice(0, 3);
+      setLastUsedStyles(newLastUsedStyles);
+    }
+    
+    setCurrentArtStyle(null);
+    setLastUsedType(null);
     const defaultColumnHeaders = ['B', 'I', 'N', 'G', 'O'];
     const defaultRowHeaders = ['100', '200', '300', '400', '500'];
     setColumnHeaders(defaultColumnHeaders);
@@ -636,6 +567,248 @@ function App() {
   const handleLoadCancel = () => {
     setLoadConfirmDialogOpen(false);
     setGameToLoad(null);
+  };
+
+  const generateAIImage = async () => {
+    // Art Styles
+    const artStyles = [
+      "Painterly Traditional Fantasy",
+      "Comic Book Style",
+      "Art Nouveau Fantasy",
+      "Cel-Shaded Cartoony",
+      "Dark Fantasy",
+      "Retro Storybook",
+      "Surreal Dreamlike",
+      "Hyper-Realistic",
+      "Pop Surreal",
+      "Vintage Fantasy"
+    ];
+
+    // If we don't have a current art style, select one randomly (excluding last 3 used)
+    if (!currentArtStyle) {
+      const availableStyles = artStyles.filter(style => !lastUsedStyles.includes(style));
+      const selectedStyle = availableStyles[Math.floor(Math.random() * availableStyles.length)];
+      setCurrentArtStyle(selectedStyle);
+      
+      // Update last used styles
+      const newLastUsedStyles = [selectedStyle, ...lastUsedStyles].slice(0, 3);
+      setLastUsedStyles(newLastUsedStyles);
+    }
+
+    // Use the current art style
+    const style = currentArtStyle || artStyles[0];
+
+    // Creatures
+    const creatures = [
+      // Mammals
+      "fox", "deer", "bear", "rabbit", "wolf", "red panda", "squirrel", "hedgehog", "raccoon", "otter",
+      "dormouse", "chipmunk", "badger", "lynx", "fawn", "arctic fox", "fennec fox", "flying squirrel",
+      "pine marten", "stoat",
+      
+      // Birds
+      "owl", "crow", "peacock", "dove", "eagle", "hummingbird", "sparrow", "bluejay", "cardinal",
+      "chickadee", "woodpecker", "swan", "kingfisher", "barn owl", "robin", "wren", "magpie",
+      "nightingale", "swallow", "finch",
+      
+      // Reptiles & Amphibians
+      "dragon", "lizard", "snake", "turtle", "chameleon", "gecko", "salamander", "newt", "toad",
+      "tree frog", "axolotl", "bearded dragon", "skink", "tortoise", "iguana", "garden snake",
+      "grass snake", "fire-bellied newt", "spotted salamander", "leopard gecko",
+      
+      // Fish & Sea Creatures
+      "koi", "angelfish", "shark", "whale", "seahorse", "goldfish", "betta fish", "clownfish",
+      "starfish", "jellyfish", "octopus", "narwhal", "manta ray", "dolphin", "sea turtle",
+      "lionfish", "sea dragon", "flying fish", "moorish idol", "pufferfish",
+      
+      // Insects & Arachnids
+      "butterfly", "bee", "dragonfly", "firefly", "scarab", "ladybug", "moth", "praying mantis",
+      "grasshopper", "cricket", "caterpillar", "spider", "ant", "cicada", "damselfly", "luna moth",
+      "atlas moth", "jewel beetle", "walking stick", "leaf insect",
+      
+      // Fantastical Creatures
+      "unicorn", "griffin", "dragon", "phoenix", "pegasus", "kitsune", "jackalope", "hippogriff",
+      "basilisk", "chimera", "kraken", "mermaid", "centaur", "fairy", "sprite", "pixie", "selkie",
+      "dragon hatchling", "baby phoenix", "tiny unicorn",
+      
+      // Mythological
+      "forest spirit", "water elemental", "shadow creature", "light being", "nature guardian",
+      "dryad", "nymph", "sylph", "gnome", "brownie", "leprechaun", "will-o'-wisp", "kirin",
+      "tanuki", "cloud spirit", "tree spirit", "river spirit", "mountain spirit", "crystal being",
+      "star creature"
+    ];
+
+    // Items
+    const items = [
+      // Magical Tools & Implements
+      "enchanted compass", "floating lantern", "magical hourglass", "crystal orb", "singing bell",
+      "wizard's staff", "enchanted brush", "crystal quill", "glowing compass", "mystic telescope",
+      "divining rod", "enchanted mirror", "scrying bowl", "magic wand", "rune stones",
+      "alchemy set", "spell book", "tarot deck", "crystal ball", "dowsing pendulum",
+      
+      // Clothing & Accessories
+      "wizard's hat", "enchanted cloak", "magical boots", "glowing crown", "mystic amulet",
+      "fairy wings", "crystal earrings", "magic ring", "enchanted bracelet", "witch's shawl",
+      "magical brooch", "enchanted ribbon", "crystal tiara", "magic shoes", "witch's hat",
+      "enchanted scarf", "magical gloves", "crystal necklace", "witch's belt", "magic glasses",
+      
+      // Books & Writing
+      "floating spellbook", "ancient scroll", "magical map", "glowing runes", "enchanted diary",
+      "witch's grimoire", "book of shadows", "magical journal", "enchanted quill", "living storybook",
+      "secret recipe book", "garden journal", "herbal guide", "book of dreams", "crystal encyclopedia",
+      "potion recipe book", "magical almanac", "enchanted notebook", "spell scroll", "fairy tale book",
+      
+      // Potions & Containers
+      "rainbow potion", "starlight vial", "crystal flask", "bubble bottle", "moonlight elixir",
+      "healing potion", "fairy dust jar", "magic ink bottle", "crystal decanter", "dream essence vial",
+      "transformation potion", "love elixir", "wisdom brew", "luck potion", "sleeping draught",
+      "truth serum", "growth elixir", "memory potion", "courage brew", "peace tincture",
+      
+      // Household & Garden
+      "enchanted teapot", "magical watering can", "living broom", "crystal vase", "singing windchimes",
+      "magic garden shears", "enchanted basket", "floating candle", "witch's cauldron", "magic mortar and pestle",
+      "enchanted teacup", "magical kettle", "living doorknob", "crystal lamp", "witch's broom",
+      "magic spinning wheel", "enchanted needle", "crystal bowl", "magical spoon", "enchanted thimble",
+      
+      // Musical & Sound
+      "singing crystal", "magic music box", "enchanted flute", "fairy bells", "witch's whistle",
+      "crystal chimes", "magical harp", "enchanted drum", "spirit whistle", "dream bells",
+      "harmony stone", "musical locket", "singing shell", "magic ocarina", "crystal xylophone",
+      "enchanted violin", "fairy pipes", "witch's rattle", "magical horn", "singing bowl"
+    ];
+
+    // Scenery
+    const scenery = [
+      // Buildings & Structures
+      "cottage", "treehouse", "windmill", "lighthouse", "castle", "tower", "barn", "greenhouse",
+      "cabin", "water mill", "stone bridge", "gazebo", "pavilion", "observatory", "temple",
+      "fairy house", "mushroom house", "hobbit hole", "crystal tower", "floating castle",
+      
+      // Gardens & Cultivated Spaces
+      "flower garden", "herb garden", "rose maze", "vegetable patch", "orchard", "tea garden",
+      "zen garden", "butterfly garden", "wildflower meadow", "topiary garden", "hanging gardens",
+      "secret garden", "cottage garden", "kitchen garden", "fairy garden", "moss garden",
+      "rock garden", "water garden", "moonlight garden", "sunflower field",
+      
+      // Natural Formations
+      "waterfall", "crystal cave", "ancient tree", "hot springs", "flowering valley", "misty mountains",
+      "aurora sky", "coral reef", "tide pools", "rainbow falls", "glowworm cave", "stone arch",
+      "cherry blossom grove", "bamboo forest", "redwood forest", "lavender field", "alpine meadow",
+      "crystal spring", "starlit lagoon", "cloud forest",
+      
+      // Magical Places
+      "fairy circle", "enchanted grove", "crystal glade", "dragon's lair", "phoenix nest",
+      "unicorn sanctuary", "mermaid lagoon", "witch's garden", "wizard's study", "elven sanctuary",
+      "magical library", "potion workshop", "enchanted fountain", "starlit clearing", "moonlit pool",
+      "crystal sanctuary", "rainbow bridge", "dream portal", "time garden", "spirit shrine",
+      
+      // Cozy Spaces
+      "reading nook", "tea room", "window seat", "garden bench", "covered porch", "courtyard",
+      "conservatory", "art studio", "music room", "meditation space", "writing desk", "craft room",
+      "library corner", "breakfast nook", "window garden", "candlelit study", "cozy attic",
+      "plant-filled sunroom", "quilting room", "pottery workshop",
+      
+      // Seasonal & Weather
+      "autumn forest", "winter wonderland", "spring meadow", "summer garden", "rainy street",
+      "foggy morning", "snowy village", "autumn path", "spring creek", "summer twilight",
+      "winter cottage", "misty dawn", "golden sunset", "starry night", "morning frost",
+      "autumn leaves", "spring blossoms", "summer breeze", "winter moonlight", "rainbow after rain"
+    ];
+
+    // Select random elements from each category
+    const creature = creatures[Math.floor(Math.random() * creatures.length)];
+    const item = items[Math.floor(Math.random() * items.length)];
+    const scene = scenery[Math.floor(Math.random() * scenery.length)];
+
+    // Determine the next type based on the last used type
+    let nextType: 'creature' | 'item' | 'scene';
+    if (!lastUsedType) {
+      // If no type has been used yet, randomly select one
+      const types: ('creature' | 'item' | 'scene')[] = ['creature', 'item', 'scene'];
+      nextType = types[Math.floor(Math.random() * types.length)];
+    } else {
+      // Rotate to the next type
+      switch (lastUsedType) {
+        case 'creature':
+          nextType = 'item';
+          break;
+        case 'item':
+          nextType = 'scene';
+          break;
+        case 'scene':
+          nextType = 'creature';
+          break;
+      }
+    }
+
+    // Update the last used type
+    setLastUsedType(nextType);
+
+    // Build the prompt based on the selected type
+    let element;
+    switch (nextType) {
+      case 'creature':
+        element = creature;
+        break;
+      case 'item':
+        element = item;
+        break;
+      case 'scene':
+        element = scene;
+        break;
+    }
+    
+    const prompt = `${element}, ${style}, pure white background, single illustration, clean edges, no text, centered composition, isolated artwork`;
+    const seed = Math.floor(Math.random() * 1000000);
+    
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}&width=256&height=256&nologo=true&style=cute&seed2=${seed + 1}`;
+  };
+
+  // Add new handlers for long press
+  const handleTileMouseDown = async (tileId: number) => {
+    const clickedTile = tiles.find(tile => tile.id === tileId);
+    if (!clickedTile || !clickedTile.selected || isRegenerating) return;
+
+    setPressedTileId(tileId);
+
+    // Start a timer for long press
+    const timer = window.setTimeout(async () => {
+      setIsRegenerating(true);
+      setPressedTileId(null);
+      try {
+        const newImageUrl = await generateAIImage();
+        if (!newImageUrl) {
+          throw new Error('Failed to generate image');
+        }
+        const newTiles = tiles.map(tile =>
+          tile.id === tileId ? { ...tile, stickerUrl: newImageUrl } : tile
+        );
+        setTiles(newTiles);
+      } catch (error) {
+        console.error('Error regenerating image:', error);
+        // Show error message to user
+        alert('Failed to generate new image. Please try again.');
+      } finally {
+        setIsRegenerating(false);
+      }
+    }, 2000);
+
+    setPressTimer(timer);
+  };
+
+  const handleTileMouseUp = () => {
+    setPressedTileId(null);
+    if (pressTimer) {
+      window.clearTimeout(pressTimer);
+      setPressTimer(null);
+    }
+  };
+
+  const handleTileMouseLeave = () => {
+    setPressedTileId(null);
+    if (pressTimer) {
+      window.clearTimeout(pressTimer);
+      setPressTimer(null);
+    }
   };
 
   return (
@@ -978,13 +1151,13 @@ function App() {
                           sx={{
                             height: getTileHeight(),
                             width: getTileWidth(),
-                            cursor: 'pointer',
+                            cursor: tile.selected ? 'pointer' : tile.highlighted ? 'pointer' : 'default',
                             overflow: 'hidden',
                             backgroundColor: 'white',
                             borderRadius: '0px',
                             ...borderRadius,
                             position: 'relative',
-                            transition: 'transform 0.2s ease',
+                            transition: 'all 0.2s ease, transform 0.2s ease',
                             transform: tile.highlighted ? 'translateZ(12px)' : 'none',
                             '& .tile-front': {
                               backgroundColor: tile.highlighted ? '#e3f2fd' : 'white',
@@ -1015,9 +1188,15 @@ function App() {
                             border: tile.isWinningTile 
                               ? '3px solid #dc004e'
                               : undefined,
+                            opacity: pressedTileId === tile.id ? 0.7 : 1
                           }}
                           elevation={tile.highlighted ? 8 : 3}
                           onClick={() => handleTileClick(tile.id)}
+                          onMouseDown={() => handleTileMouseDown(tile.id)}
+                          onMouseUp={handleTileMouseUp}
+                          onMouseLeave={handleTileMouseLeave}
+                          onTouchStart={() => handleTileMouseDown(tile.id)}
+                          onTouchEnd={handleTileMouseUp}
                           className={`tile-flipper ${tile.selected ? 'tile-flipped' : ''}`}
                         >
                           <div className="tile-inner">
