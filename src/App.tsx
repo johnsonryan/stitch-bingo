@@ -9,8 +9,6 @@ import {
   createTheme,
   TextField,
   Stack,
-  Switch,
-  FormControlLabel,
   useMediaQuery,
   CircularProgress,
   Dialog,
@@ -260,13 +258,40 @@ function App() {
     initializeBoard();
   }, []);
 
-  // Load saved games from localStorage on mount
+  // Load saved games and current game state from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('bingoSavedGames');
     if (saved) {
       setSavedGames(JSON.parse(saved));
     }
+
+    const currentGame = localStorage.getItem('bingoCurrentGame');
+    if (currentGame) {
+      const gameState = JSON.parse(currentGame);
+      setTiles(gameState.tiles);
+      setColumnHeaders(gameState.columnHeaders);
+      setRowHeaders(gameState.rowHeaders);
+      setBingo(gameState.bingo);
+      setActiveGameTimestamp(gameState.timestamp);
+      setIsImageLoading(false);
+    } else {
+      initializeBoard();
+    }
   }, []);
+
+  // Save current game state to localStorage whenever it changes
+  useEffect(() => {
+    if (!isImageLoading) {
+      const currentGame = {
+        tiles,
+        columnHeaders,
+        rowHeaders,
+        bingo,
+        timestamp: activeGameTimestamp
+      };
+      localStorage.setItem('bingoCurrentGame', JSON.stringify(currentGame));
+    }
+  }, [tiles, columnHeaders, rowHeaders, bingo, activeGameTimestamp, isImageLoading]);
 
   const markWinningTiles = (newTiles: BingoTile[], winningTilesFn: (tile: BingoTile) => boolean) => {
     const winningTiles = newTiles.map(tile => 
@@ -456,20 +481,6 @@ function App() {
     }
   };
 
-  const resetGame = async () => {
-    setIsImageLoading(true);
-    await initializeBoard();
-  };
-
-  const handleResetClick = () => {
-    setResetDialogOpen(true);
-  };
-
-  const handleResetConfirm = async () => {
-    setResetDialogOpen(false);
-    await resetGame();
-  };
-
   const handleResetCancel = () => {
     setResetDialogOpen(false);
   };
@@ -553,6 +564,8 @@ function App() {
     
     setTiles(initialTiles);
     setBingo(false);
+    // Clear current game from localStorage when starting new game
+    localStorage.removeItem('bingoCurrentGame');
   };
 
   const handleNewGameCancel = () => {
@@ -1015,7 +1028,7 @@ function App() {
                                   padding: isMobile ? '0.25rem' : '0.5rem',
                                   wordBreak: 'break-word',
                                   textAlign: 'center',
-                                  fontSize: (theme) => {
+                                  fontSize: () => {
                                     const baseSize = isMobile ? 0.8 : 1;
                                     return tile.value.length > 10 
                                       ? `${baseSize * 0.8}rem` 
@@ -1136,7 +1149,7 @@ function App() {
                 {savedGames
                   .slice()
                   .sort((a, b) => b.timestamp - a.timestamp)
-                  .map((game, index) => (
+                  .map((game) => (
                     <Paper
                       key={game.timestamp}
                       sx={{
