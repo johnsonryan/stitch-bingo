@@ -77,6 +77,7 @@ interface SavedGame {
   timestamp: number;
   artStyle?: string;
   lastUsedStyles?: string[];
+  name?: string;
 }
 
 function App() {
@@ -104,6 +105,11 @@ function App() {
   const [pressTimer, setPressTimer] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [pressedTileId, setPressedTileId] = useState<number | null>(null);
+  const [deleteConfirmDialogOpen, setDeleteConfirmDialogOpen] = useState(false);
+  const [gameToDelete, setGameToDelete] = useState<number | null>(null);
+  const [editingGameName, setEditingGameName] = useState<number | null>(null);
+  const [highlightConfirmDialogOpen, setHighlightConfirmDialogOpen] = useState(false);
+  const [tileToHighlight, setTileToHighlight] = useState<number | null>(null);
   
   // Media queries for responsive design
   const isMobile = useMediaQuery('(max-width:600px)');
@@ -295,7 +301,18 @@ function App() {
     if (isRegenerating) return;
 
     const clickedTile = tiles.find(tile => tile.id === tileId);
-    if (!clickedTile || clickedTile.selected) return;
+    if (!clickedTile) return;
+
+    if (editMode) {
+      // In edit mode, allow highlighting unselected and unhighlighted tiles
+      if (!clickedTile.selected && !clickedTile.highlighted) {
+        setTileToHighlight(tileId);
+        setHighlightConfirmDialogOpen(true);
+      }
+      return;
+    }
+
+    if (clickedTile.selected) return;
 
     if (clickedTile.highlighted) {
       // If the tile is highlighted but has no image (failed generation), try again
@@ -324,6 +341,29 @@ function App() {
         setBingo(true);
       }
     }
+  };
+
+  const handleHighlightConfirm = async () => {
+    if (tileToHighlight === null) return;
+
+    try {
+      const imageUrl = await generateAIImage();
+      const newTiles = tiles.map(tile =>
+        tile.id === tileToHighlight ? { ...tile, highlighted: true, stickerUrl: imageUrl } : tile
+      );
+      setTiles(newTiles);
+    } catch (error) {
+      console.error('Error generating image for manual highlight:', error);
+      alert('Failed to generate image for the tile. Please try again.');
+    }
+
+    setHighlightConfirmDialogOpen(false);
+    setTileToHighlight(null);
+  };
+
+  const handleHighlightCancel = () => {
+    setHighlightConfirmDialogOpen(false);
+    setTileToHighlight(null);
   };
 
   const handleColumnHeaderClick = (index: number) => {
@@ -404,6 +444,8 @@ function App() {
 
   const handleSaveGame = () => {
     const currentTimestamp = activeGameTimestamp || Date.now();
+    const currentGame = savedGames.find(game => game.timestamp === activeGameTimestamp);
+    
     const newSave: SavedGame = {
       tiles,
       columnHeaders,
@@ -411,7 +453,11 @@ function App() {
       bingo,
       timestamp: currentTimestamp,
       artStyle: currentArtStyle || undefined,
-      lastUsedStyles
+      lastUsedStyles,
+      name: currentGame?.name || getDefaultGameName({ 
+        tiles, columnHeaders, rowHeaders, bingo, 
+        timestamp: currentTimestamp 
+      })
     };
 
     let updatedSaves: SavedGame[];
@@ -448,6 +494,13 @@ function App() {
     setLastUsedStyles(savedGame.lastUsedStyles || []);
     setLastUsedType(null);
     setLoadDialogOpen(false);
+
+    // Update the saved games to ensure the loaded game's name persists
+    const updatedSaves = savedGames.map(game => 
+      game.timestamp === savedGame.timestamp ? savedGame : game
+    );
+    setSavedGames(updatedSaves);
+    localStorage.setItem('bingoSavedGames', JSON.stringify(updatedSaves));
   };
 
   const handleNewGame = () => {
@@ -504,18 +557,24 @@ function App() {
   };
 
   const handleDeleteSave = (timestamp: number) => {
-    const updatedSaves = savedGames.filter(game => game.timestamp !== timestamp);
+    setGameToDelete(timestamp);
+    setDeleteConfirmDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (gameToDelete === null) return;
+    
+    const updatedSaves = savedGames.filter(game => game.timestamp !== gameToDelete);
     setSavedGames(updatedSaves);
     localStorage.setItem('bingoSavedGames', JSON.stringify(updatedSaves));
     
-    if (timestamp === activeGameTimestamp) {
+    if (gameToDelete === activeGameTimestamp) {
       setActiveGameTimestamp(null);
       const defaultColumnHeaders = ['B', 'I', 'N', 'G', 'O'];
       const defaultRowHeaders = ['100', '200', '300', '400', '500'];
       setColumnHeaders(defaultColumnHeaders);
       setRowHeaders(defaultRowHeaders);
 
-      // Create new tiles with default row header values
       const initialTiles: BingoTile[] = Array.from({ length: 25 }, (_, index) => ({
         id: index,
         selected: false,
@@ -531,6 +590,14 @@ function App() {
       setTiles(initialTiles);
       setBingo(false);
     }
+
+    setDeleteConfirmDialogOpen(false);
+    setGameToDelete(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmDialogOpen(false);
+    setGameToDelete(null);
   };
 
   const handleLoadGameClick = (game: SavedGame) => {
@@ -811,6 +878,70 @@ function App() {
     }
   };
 
+  const getDefaultGameName = (_game: SavedGame) => {
+    // Find all games that use the default naming pattern
+    const defaultNameGames = savedGames
+      .filter(g => g.name?.startsWith('Saved Game '))
+      .map(g => {
+        const num = parseInt(g.name?.replace('Saved Game ', '') || '0');
+        return isNaN(num) ? 0 : num;
+      });
+
+    // If no games with default names exist, start with 1
+    if (defaultNameGames.length === 0) {
+      return 'Saved Game 1';
+    }
+
+    // Find the highest number used and add 1
+    const nextNumber = Math.max(...defaultNameGames) + 1;
+    return `Saved Game ${nextNumber}`;
+  };
+
+  const handleGameNameEdit = (timestamp: number) => {
+    setEditingGameName(timestamp);
+  };
+
+  const handleGameNameChange = (timestamp: number, newName: string) => {
+    const updatedSaves = savedGames.map(game => 
+      game.timestamp === timestamp 
+        ? { ...game, name: newName.trim() || undefined }
+        : game
+    );
+    setSavedGames(updatedSaves);
+    localStorage.setItem('bingoSavedGames', JSON.stringify(updatedSaves));
+    setEditingGameName(null);
+  };
+
+  const handleGameNameKeyPress = (event: React.KeyboardEvent, timestamp: number) => {
+    if (event.key === 'Enter') {
+      const input = event.target as HTMLInputElement;
+      handleGameNameChange(timestamp, input.value);
+    } else if (event.key === 'Escape') {
+      setEditingGameName(null);
+    }
+  };
+
+  const getGameStatusText = (game: SavedGame) => {
+    const pulledCount = game.tiles.filter(t => t.highlighted).length;
+    const completedCount = game.tiles.filter(t => t.selected).length;
+    return game.bingo 
+      ? `BINGO / ${pulledCount} Selected / ${completedCount} Completed`
+      : `${pulledCount} Selected / ${completedCount} Completed`;
+  };
+
+  const formatDateTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    }) + ' - ' + date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <Container 
@@ -825,7 +956,7 @@ function App() {
           spacing={isMobile ? 1 : 2} 
           justifyContent="center" 
           sx={{ 
-            mb: isMobile ? 2 : 3,
+            mb: isMobile ? 1 : 2,
             maxWidth: isMobile ? '100%' : '800px',
             mx: 'auto',
             width: '100%'
@@ -845,7 +976,7 @@ function App() {
               whiteSpace: 'nowrap'
             }}
           >
-            {cooldownActive ? `Wait ${cooldownTime}s` : 'Pull Random Tile'}
+            {cooldownActive ? `Wait ${cooldownTime}s` : 'Select Random Tile'}
             {cooldownActive && (
               <Box
                 sx={{
@@ -1294,7 +1425,6 @@ function App() {
           <DialogContent>
             <Typography>
               This will save your current game progress. You can have up to 5 saved games.
-              {savedGames.length >= 5 && ' The oldest save will be removed.'}
             </Typography>
           </DialogContent>
           <DialogActions>
@@ -1331,25 +1461,80 @@ function App() {
                   .map((game) => (
                     <Paper
                       key={game.timestamp}
+                      elevation={0}
                       sx={{
                         p: 2,
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center'
+                        alignItems: 'flex-start',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: 1
                       }}
                     >
-                      <Box>
-                        <Typography variant="subtitle1">
-                          {`${game.tiles.filter(t => t.highlighted).length} Pulled / ${game.tiles.filter(t => t.selected).length} Completed Tiles`}
+                      <Box sx={{ flex: 1, mr: 2 }}>
+                        {editingGameName === game.timestamp ? (
+                          <TextField
+                            autoFocus
+                            defaultValue={game.name || getDefaultGameName(game)}
+                            onBlur={(e) => handleGameNameChange(game.timestamp, e.target.value)}
+                            onKeyDown={(e) => handleGameNameKeyPress(e, game.timestamp)}
+                            size="small"
+                            fullWidth
+                            inputProps={{
+                              maxLength: 50,
+                              style: { 
+                                fontSize: '1rem',
+                                fontWeight: 'bold',
+                                textAlign: 'left'
+                              }
+                            }}
+                            sx={{
+                              '& .MuiInputBase-input': {
+                                textAlign: 'left'
+                              }
+                            }}
+                          />
+                        ) : (
+                          <Typography 
+                            variant="subtitle1" 
+                            sx={{ 
+                              cursor: 'pointer',
+                              '&:hover': {
+                                textDecoration: 'underline'
+                              },
+                              textAlign: 'left',
+                              fontWeight: 'bold',
+                              mb: 0.5,
+                              width: '100%'
+                            }}
+                            onClick={() => handleGameNameEdit(game.timestamp)}
+                          >
+                            {game.name || getDefaultGameName(game)}
+                          </Typography>
+                        )}
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ 
+                            mb: 0.5,
+                            textAlign: 'left',
+                            width: '100%'
+                          }}
+                        >
+                          {formatDateTime(game.timestamp)}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {new Date(game.timestamp).toLocaleString()}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {game.bingo ? 'BINGO achieved!' : 'Game in progress'}
+                        <Typography 
+                          variant="body2" 
+                          color={game.bingo ? "secondary.main" : "text.secondary"}
+                          sx={{ 
+                            textAlign: 'left',
+                            width: '100%'
+                          }}
+                        >
+                          {getGameStatusText(game)}
                         </Typography>
                       </Box>
-                      <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                         <Button
                           onClick={() => handleLoadGameClick(game)}
                           color="primary"
@@ -1384,6 +1569,12 @@ function App() {
           aria-describedby="load-confirm-dialog-description"
           disableEnforceFocus
           disablePortal
+          PaperProps={{
+            sx: {
+              width: '80%',
+              maxWidth: '480px' // 80% of Material-UI's sm breakpoint (600px)
+            }
+          }}
         >
           <DialogTitle id="load-confirm-dialog-title">
             Save Current Game?
@@ -1436,6 +1627,66 @@ function App() {
               }
             }} color="secondary" variant="contained" autoFocus>
               Create New Game
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteConfirmDialogOpen}
+          onClose={handleDeleteCancel}
+          aria-labelledby="delete-confirm-dialog-title"
+          aria-describedby="delete-confirm-dialog-description"
+          disableEnforceFocus
+          disablePortal
+          PaperProps={{
+            sx: {
+              width: '80%',
+              maxWidth: '480px' // 80% of Material-UI's sm breakpoint (600px)
+            }
+          }}
+        >
+          <DialogTitle id="delete-confirm-dialog-title">
+            Delete Game?
+          </DialogTitle>
+          <DialogContent>
+            <Typography id="delete-confirm-dialog-description">
+              Are you sure you want to delete this saved game? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleDeleteCancel} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Highlight Confirmation Dialog */}
+        <Dialog
+          open={highlightConfirmDialogOpen}
+          onClose={handleHighlightCancel}
+          aria-labelledby="highlight-confirm-dialog-title"
+          aria-describedby="highlight-confirm-dialog-description"
+          disableEnforceFocus
+          disablePortal
+        >
+          <DialogTitle id="highlight-confirm-dialog-title">
+            Select Tile?
+          </DialogTitle>
+          <DialogContent>
+            <Typography id="highlight-confirm-dialog-description">
+              Are you sure you want to manually select this tile?
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleHighlightCancel} color="primary">
+              Cancel
+            </Button>
+            <Button onClick={handleHighlightConfirm} color="primary" variant="contained" autoFocus>
+              Select Tile
             </Button>
           </DialogActions>
         </Dialog>
