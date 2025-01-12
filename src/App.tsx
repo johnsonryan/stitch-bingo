@@ -620,17 +620,6 @@ function App() {
     setGameToLoad(null);
   };
 
-  const handleSaveAndLoad = async () => {
-    if (!gameToLoad) return;
-    
-    // Save current game first
-    handleSaveGame();
-    // Then load the new game
-    handleLoadGame(gameToLoad);
-    setLoadConfirmDialogOpen(false);
-    setGameToLoad(null);
-  };
-
   const handleLoadCancel = () => {
     setLoadConfirmDialogOpen(false);
     setGameToLoad(null);
@@ -1504,8 +1493,7 @@ function App() {
                               },
                               textAlign: 'left',
                               fontWeight: 'bold',
-                              mb: 0.5,
-                              width: '100%'
+                              mb: 0.5
                             }}
                             onClick={() => handleGameNameEdit(game.timestamp)}
                           >
@@ -1536,17 +1524,17 @@ function App() {
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                         <Button
-                          onClick={() => handleLoadGameClick(game)}
-                          color="primary"
-                          sx={{ mr: 1 }}
-                        >
-                          Load
-                        </Button>
-                        <Button
                           onClick={() => handleDeleteSave(game.timestamp)}
                           color="error"
+                          sx={{ mr: 1 }}
                         >
                           Delete
+                        </Button>
+                        <Button
+                          onClick={() => handleLoadGameClick(game)}
+                          color="primary"
+                        >
+                          Load
                         </Button>
                       </Box>
                     </Paper>
@@ -1572,27 +1560,38 @@ function App() {
           PaperProps={{
             sx: {
               width: '80%',
-              maxWidth: '480px' // 80% of Material-UI's sm breakpoint (600px)
+              maxWidth: '480px'
             }
           }}
         >
           <DialogTitle id="load-confirm-dialog-title">
-            Save Current Game?
+            Unsaved Progress
           </DialogTitle>
           <DialogContent>
             <Typography id="load-confirm-dialog-description">
-              Would you like to save your current game progress before loading another game?
+              Your current game has unsaved progress. Would you like to save it before loading another game?
             </Typography>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleLoadCancel} color="primary">
               Cancel
             </Button>
-            <Button onClick={handleLoadConfirm} color="primary">
-              Don't Save
+            <Button 
+              onClick={() => {
+                setLoadConfirmDialogOpen(false);
+                setLoadDialogOpen(false);
+                setSaveDialogOpen(true);
+              }} 
+              color="primary"
+            >
+              Save
             </Button>
-            <Button onClick={handleSaveAndLoad} color="secondary" variant="contained" autoFocus>
-              Save and Load
+            <Button 
+              onClick={handleLoadConfirm} 
+              color="secondary" 
+              variant="contained"
+            >
+              Load
             </Button>
           </DialogActions>
         </Dialog>
